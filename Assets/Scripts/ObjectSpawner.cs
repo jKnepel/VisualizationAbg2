@@ -9,6 +9,9 @@ public class ObjectSpawner : MonoBehaviour
 {
     [Header("UI")] 
     [SerializeField] private Canvas _canvas;
+    [SerializeField] private GameObject _uiParent;
+    [SerializeField] private TMP_Text _countdown;
+    [SerializeField] private TMP_Dropdown _perspective;
     [SerializeField] private TMP_InputField _numberOfObjectsField;
     [SerializeField] private TMP_InputField _distanceOfObjectsField;
     [SerializeField] private TMP_Dropdown _attractorShapeDropdown;
@@ -21,6 +24,11 @@ public class ObjectSpawner : MonoBehaviour
     [Header("Spawner")]
     [SerializeField] private Transform _parent;
     [SerializeField] private Material _material;
+    [SerializeField] private Camera _camera;
+    [SerializeField] private Vector3 _camera2DPos = new(0, 30, 0);
+    [SerializeField] private Vector3 _camera2DRot = new(90, 0, 0);
+    [SerializeField] private Vector3 _camera3DPos = new(0, 30, -30);
+    [SerializeField] private Vector3 _camera3DRot = new(40, 0, 0);
     
     private int _numberOfObjects = 50;
     private float _spawnDistance = 2.0f;
@@ -62,11 +70,28 @@ public class ObjectSpawner : MonoBehaviour
             _errorMessage.gameObject.SetActive(true);
             return;
         }
+        
+        if (_perspective.options[_perspective.value].text.Equals("2D"))
+            _camera.transform.SetPositionAndRotation(_camera2DPos, Quaternion.Euler(_camera2DRot));
+        else
+            _camera.transform.SetPositionAndRotation(_camera3DPos, Quaternion.Euler(_camera3DRot));
 
         SpawnObjects();
+        
+        _uiParent.gameObject.SetActive(false);
+        _countdown.gameObject.SetActive(true);
+        _countdown.text = "3";
+        await Task.Run(async delegate { await Task.Delay(500); });
+        _countdown.text = "2";
+        await Task.Run(async delegate { await Task.Delay(500); });
+        _countdown.text = "1";
+        await Task.Run(async delegate { await Task.Delay(500); });
+        _countdown.gameObject.SetActive(false);
         _canvas.gameObject.SetActive(false);
         await Task.Run(async delegate { await Task.Delay(_shownTime); });
         _canvas.gameObject.SetActive(true);
+        _uiParent.gameObject.SetActive(true);
+        
         CleanupObjects();
     }
 
