@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 using Random = System.Random;
 
 public class ObjectSpawner : MonoBehaviour
@@ -15,9 +17,11 @@ public class ObjectSpawner : MonoBehaviour
     [SerializeField] private TMP_InputField _numberOfObjectsField;
     [SerializeField] private TMP_InputField _distanceOfObjectsField;
     [SerializeField] private TMP_Dropdown _attractorShapeDropdown;
+    [SerializeField] private TMP_Dropdown _attractorColourDropdown;
     [SerializeField] private TMP_Dropdown _distractorShapeDropdown;
-    [SerializeField] private TMP_InputField _attractorColourField;
-    [SerializeField] private TMP_InputField _distractorColourField;
+    [SerializeField] private Toggle _randomizeDistractorShapeToggle;
+    [SerializeField] private TMP_Dropdown _distractorColourDropdown;
+    [SerializeField] private Toggle _randomizeDistractorColourToggle;
     [SerializeField] private TMP_InputField _timeInMSField;
     [SerializeField] private TMP_Text _errorMessage;
     
@@ -33,22 +37,29 @@ public class ObjectSpawner : MonoBehaviour
     private int _numberOfObjects = 50;
     private float _spawnDistance = 2.0f;
     private PrimitiveType _attractorShape = PrimitiveType.Sphere;
-    private PrimitiveType _distractorShape = PrimitiveType.Cube;
     private Color _attractorColour = Color.white;
+    private PrimitiveType _distractorShape = PrimitiveType.Cube;
+    private bool _randomizeDistractorShape = false;
     private Color _distractorColour = Color.white;
+    private bool _randomizeDistractorColour = false;
     private int _shownTime;
     
     private GameObject[] _objects;
 
+    private readonly List<string> _shapes = new() { "Sphere", "Cube", "Cylinder", "Capsule" };
+    private readonly List<string> _colours = new() { "white", "green", "blue", "red", "black", "yellow", "cyan", "magenta", "grey" };
+
     private void Start()
     {
-        var shapes = Enum.GetNames(typeof(PrimitiveType)).ToList();
-        _attractorShapeDropdown.AddOptions(shapes);
-        _distractorShapeDropdown.AddOptions(shapes);
+        _attractorShapeDropdown.AddOptions(_shapes);
+        _attractorColourDropdown.AddOptions(_colours);
+        _distractorShapeDropdown.AddOptions(_shapes);
+        _distractorColourDropdown.AddOptions(_colours);
     }
 
     public async void StartTest()
     {
+        CleanupObjects();
         _errorMessage.gameObject.SetActive(false);
         
         try
@@ -56,13 +67,15 @@ public class ObjectSpawner : MonoBehaviour
             _numberOfObjects = int.Parse(_numberOfObjectsField.text);
             _spawnDistance = float.Parse(_distanceOfObjectsField.text);
             _attractorShape = Enum.Parse<PrimitiveType>(_attractorShapeDropdown.options[_attractorShapeDropdown.value].text);
-            _distractorShape = Enum.Parse<PrimitiveType>(_distractorShapeDropdown.options[_distractorShapeDropdown.value].text);
-            if (!ColorUtility.TryParseHtmlString(_attractorColourField.text, out var attCol))
-                throw new();
+            ColorUtility.TryParseHtmlString(_attractorColourDropdown.options[_attractorColourDropdown.value].text,
+                out var attCol);
             _attractorColour = attCol;
-            if (!ColorUtility.TryParseHtmlString(_distractorColourField.text, out var disCol))
-                throw new();
+            _distractorShape = Enum.Parse<PrimitiveType>(_distractorShapeDropdown.options[_distractorShapeDropdown.value].text);
+            _randomizeDistractorShape = _randomizeDistractorShapeToggle.isOn;
+            ColorUtility.TryParseHtmlString(_distractorColourDropdown.options[_distractorColourDropdown.value].text,
+                out var disCol);
             _distractorColour = disCol;
+            _randomizeDistractorColour = _randomizeDistractorColourToggle.isOn;
             _shownTime = int.Parse(_timeInMSField.text);
         }
         catch (Exception)
@@ -91,13 +104,16 @@ public class ObjectSpawner : MonoBehaviour
         await Task.Run(async delegate { await Task.Delay(_shownTime); });
         _canvas.gameObject.SetActive(true);
         _uiParent.gameObject.SetActive(true);
-        
-        CleanupObjects();
     }
 
     public void ExitTest()
     {
         Application.Quit();
+    }
+
+    public void ShowMainMenu(bool showMainMenu)
+    {
+        _canvas.gameObject.SetActive(showMainMenu);
     }
 
     private void SpawnObjects()
@@ -123,21 +139,68 @@ public class ObjectSpawner : MonoBehaviour
                 var x = startX + i * _spawnDistance;
                 var z = startZ + j * _spawnDistance;
                 var position = new Vector3(x, 0.5f, z);
-                var obj = isAttractor
-                    ? GameObject.CreatePrimitive(_attractorShape)
-                    : GameObject.CreatePrimitive(_distractorShape);
-                obj.transform.parent = _parent;
-                obj.transform.position = position;
-                var matInstance = obj.GetComponent<MeshRenderer>().sharedMaterial = Instantiate(_material);
-                matInstance.color = isAttractor ? _attractorColour : _distractorColour;
-                _objects[index++] = obj;
+                
+                if (isAttractor)
+                {
+                    var obj = GameObject.CreatePrimitive(_attractorShape);
+                    obj.transform.parent = _parent;
+                    obj.transform.position = position;
+                    var matInstance = obj.GetComponent<MeshRenderer>().sharedMaterial = Instantiate(_material);
+                    matInstance.color = _attractorColour;
+                    _objects[index++] = obj;
+                }
+                else
+                {
+                    switch (_randomizeDistractorShape)
+                    {
+                        case true when !_randomizeDistractorColour && _distractorColourDropdown.value == _attractorColourDropdown.value:
+                        {
+                            var shape = GetRandomString(
+                                _shapes.Where((_, pos) => pos != _attractorShapeDropdown.value).ToList());
+                            _distractorShape = Enum.Parse<PrimitiveType>(shape);
+                            break;
+                        }
+                        case true:
+                            _distractorShape = Enum.Parse<PrimitiveType>(GetRandomString(_shapes));
+                            break;
+                    }
+                    switch (_randomizeDistractorColour)
+                    {
+                        case true when _distractorShape == _attractorShape:
+                        {
+                            var colour = GetRandomString(
+                                _colours.Where((_, pos) => pos != _attractorColourDropdown.value).ToList());
+                            ColorUtility.TryParseHtmlString(colour, out _distractorColour);
+                            break;
+                        }
+                        case true:
+                        {
+                            var colour = GetRandomString(_colours);
+                            ColorUtility.TryParseHtmlString(colour, out _distractorColour);
+                            break;
+                        }
+                    }
+
+                    var obj = GameObject.CreatePrimitive(_distractorShape);
+                    obj.transform.parent = _parent;
+                    obj.transform.position = position;
+                    var matInstance = obj.GetComponent<MeshRenderer>().sharedMaterial = Instantiate(_material);
+                    matInstance.color = _distractorColour;
+                    _objects[index++] = obj;
+                }
             }
         }
     }
 
     private void CleanupObjects()
     {
+        if (_objects == null) return;
         foreach (var t in _objects)
             Destroy(t);
+    }
+
+    private static string GetRandomString(List<string> strings)
+    {
+        return strings[new Random().Next(strings.Count - 1)];
     }
 }
